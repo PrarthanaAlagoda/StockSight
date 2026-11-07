@@ -1,4 +1,3 @@
-
 import { serverTimestamp } from 'firebase/firestore';
 
 // Role document structure
