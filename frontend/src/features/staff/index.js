@@ -15,12 +15,18 @@ import InspectionHistory from './InspectionHistory';
 export default function StaffDashboard() {
   const [currentScreen, setCurrentScreen] = useState('dashboard');
 
+  const [inspectionData, setInspectionData] = useState(null);
+  const [photoEvidenceData, setPhotoEvidenceData] = useState(null);
+
   // Screen 2: New Inspection
   if (currentScreen === 'newInspection') {
     return (
       <NewInspection
         onBack={() => setCurrentScreen('dashboard')}
-        onContinue={() => setCurrentScreen('photoEvidence')}
+        onContinue={(data) => {
+          setInspectionData(data);
+          setCurrentScreen('photoEvidence');
+        }}
       />
     );
   }
@@ -30,12 +36,15 @@ export default function StaffDashboard() {
     return (
       <PhotoEvidence
         onBack={() => setCurrentScreen('newInspection')}
-        onContinue={() => setCurrentScreen('history')}
+        onContinue={(data) => {
+          setPhotoEvidenceData(data);
+          setCurrentScreen('history');
+        }}
       />
     );
   }
 
-  // Screen 4: Inspection History and Details
+  // Screen 4: Inspection History
   if (currentScreen === 'history') {
     return (
       <InspectionHistory
@@ -137,7 +146,7 @@ export default function StaffDashboard() {
           activeOpacity={0.8}
         >
           <Text style={styles.buttonText}>
-            +  Start New Inspection
+            + Start New Inspection
           </Text>
         </TouchableOpacity>
 
