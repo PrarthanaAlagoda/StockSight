@@ -1,24 +1,12 @@
+
 import { StatusBar } from 'expo-status-bar';
-import StaffDashboard from './src/features/staff/index.js';
+import AuthNavigator from './src/features/auth/AuthNavigator';
 
 export default function App() {
   return (
     <>
       <StatusBar style="dark" />
-      <StaffDashboard />
+      <AuthNavigator />
     </>
   );
-<<<<<<< HEAD
 }
-=======
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
->>>>>>> origin/feature/firebase-reports
