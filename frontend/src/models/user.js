@@ -1,3 +1,4 @@
+
 import { serverTimestamp } from 'firebase/firestore';
 
 // Role document structure
@@ -14,12 +15,14 @@ export const createRoleModel = ({
 // Employee document structure
 export const createEmployeeModel = ({
   employeeId,
-  roleId,
+  uid,
+  roleId = 'STAFF',
   name,
   email,
   status = 'ACTIVE',
 }) => ({
   employee_id: employeeId,
+  uid,
   role_id: roleId,
   name: name.trim(),
   email: email.trim().toLowerCase(),
