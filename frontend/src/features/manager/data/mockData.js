@@ -45,3 +45,50 @@ export const pendingInspections = [
         icon: 'cube',
     },
 ];
+
+// Full details for the review screen (keyed by inspectionId).
+// photos: url is null for now. Real Cloudinary URLs come from Firestore later.
+export const inspectionDetails = {
+    'INS-0032': {
+        inspectionId: 'INS-0032',
+        status: 'pending',
+        submittedAt: 'Today, 2:30 PM',
+        staffName: 'Nimal Perera',
+        productName: 'Wireless Headphones',
+        expectedQuantity: 20,
+        staffReportedQuantity: 18,
+        warehouseLocation: 'Colombo – WH-001',
+        photos: [
+            { id: 'p1', url: null },
+            { id: 'p2', url: null },
+        ],
+        observation: 'One box is damaged and 2 units are missing from the shelf.',
+    },
+    'INS-0031': {
+        inspectionId: 'INS-0031',
+        status: 'pending',
+        submittedAt: 'Today, 11:15 AM',
+        staffName: 'Sahan Wijesinghe',
+        productName: 'Office Chair',
+        expectedQuantity: 15,
+        staffReportedQuantity: 15,
+        warehouseLocation: 'Colombo – WH-001',
+        photos: [{ id: 'p1', url: null }],
+        observation: 'All units present and in good condition.',
+    },
+    'INS-0030': {
+        inspectionId: 'INS-0030',
+        status: 'issues',
+        submittedAt: 'Yesterday, 4:20 PM',
+        staffName: 'Dilini Fernando',
+        productName: 'Cardboard Box',
+        expectedQuantity: 50,
+        staffReportedQuantity: 45,
+        warehouseLocation: 'Kandy – WH-002',
+        photos: [
+            { id: 'p1', url: null },
+            { id: 'p2', url: null },
+        ],
+        observation: 'Five boxes are missing from the lower shelf.',
+    },
+};
