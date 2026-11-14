@@ -1,0 +1,16 @@
+export const colors = {
+    primary: '#14532D',
+    primaryLight: '#E3F2E6',
+    background: '#F0F7F1',
+    card: '#FFFFFF',
+    text: '#0F1F14',
+    muted: '#6B7280',
+    pendingBg: '#FEF3C7',
+    pendingText: '#B45309',
+    issueBg: '#FEF3C7',
+    issueText: '#D97706',
+    rejectBg: '#FEE2E2',
+    rejectText: '#DC2626',
+    successBg: '#DCFCE7',
+    successText: '#16A34A',
+};
