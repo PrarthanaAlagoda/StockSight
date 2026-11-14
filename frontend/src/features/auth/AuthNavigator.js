@@ -1,15 +1,26 @@
 
 import React, { useState } from 'react';
 import { Alert } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { sendPasswordResetEmail } from 'firebase/auth';
 
 import LoginScreen from './LoginScreen';
 import RegisterScreen from './RegisterScreen';
-import { registerUser, loginUser } from './index';
+import { registerUser, loginUser, logoutUser } from './index';
 import { auth } from '../../services/firebase';
+
+import StaffDashboard from '../staff';
+import ManagerDashboardScreen from '../manager/screens/ManagerDashboardScreen';
+import PendingQueueScreen from '../manager/screens/PendingQueueScreen';
+import InspectionReviewScreen from '../manager/screens/InspectionReviewScreen';
+import VerifyFinaliseScreen from '../manager/screens/VerifyFinaliseScreen';
+
+const ManagerStack = createNativeStackNavigator();
 
 export default function AuthNavigator() {
   const [currentScreen, setCurrentScreen] = useState('login');
+  const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // Registration
@@ -43,16 +54,22 @@ export default function AuthNavigator() {
 
       const result = await loginUser(email, password);
 
-      Alert.alert(
-        'Login Successful',
-        `Welcome back, ${result.employee.name}!\nRole: ${result.role}`
-      );
-
-      // Dashboard navigation will be added later.
+      setUserRole(result.role);
     } catch (error) {
       Alert.alert('Login Failed', error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Logout
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      setUserRole(null);
+      setCurrentScreen('login');
+    } catch (error) {
+      Alert.alert('Logout Failed', error.message);
     }
   };
 
@@ -74,6 +91,48 @@ export default function AuthNavigator() {
     }
   };
 
+  // STAFF Dashboard
+  if (userRole === 'STAFF') {
+    return <StaffDashboard onLogout={handleLogout} />;
+  }
+
+  // MANAGER Dashboard
+  if (userRole === 'MANAGER') {
+    return (
+      <NavigationContainer>
+        <ManagerStack.Navigator
+          initialRouteName="ManagerDashboard"
+          screenOptions={{ headerShown: false }}
+        >
+          <ManagerStack.Screen name="ManagerDashboard">
+            {(props) => (
+              <ManagerDashboardScreen
+                {...props}
+                onLogout={handleLogout}
+              />
+            )}
+          </ManagerStack.Screen>
+
+          <ManagerStack.Screen
+            name="PendingQueue"
+            component={PendingQueueScreen}
+          />
+
+          <ManagerStack.Screen
+            name="InspectionReview"
+            component={InspectionReviewScreen}
+          />
+
+          <ManagerStack.Screen
+            name="VerifyFinalise"
+            component={VerifyFinaliseScreen}
+          />
+        </ManagerStack.Navigator>
+      </NavigationContainer>
+    );
+  }
+
+  // Authentication Screens
   if (currentScreen === 'register') {
     return (
       <RegisterScreen

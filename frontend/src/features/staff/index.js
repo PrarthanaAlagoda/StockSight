@@ -6,13 +6,14 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 
 import NewInspection from './NewInspection';
 import PhotoEvidence from './PhotoEvidence';
 import InspectionHistory from './InspectionHistory';
 
-export default function StaffDashboard() {
+export default function StaffDashboard({ onLogout }) {
   const [currentScreen, setCurrentScreen] = useState('dashboard');
 
   const [inspectionData, setInspectionData] = useState(null);
@@ -79,6 +80,21 @@ export default function StaffDashboard() {
     },
   ];
 
+  const confirmLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: onLogout,
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -91,9 +107,12 @@ export default function StaffDashboard() {
             </Text>
           </View>
 
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>PA</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={confirmLogout}
+          >
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Welcome */}
@@ -124,17 +143,9 @@ export default function StaffDashboard() {
         <View style={styles.grid}>
           {statistics.map((item) => (
             <View key={item.label} style={styles.statCard}>
-              <Text style={styles.statIcon}>
-                {item.icon}
-              </Text>
-
-              <Text style={styles.statValue}>
-                {item.value}
-              </Text>
-
-              <Text style={styles.statLabel}>
-                {item.label}
-              </Text>
+              <Text style={styles.statIcon}>{item.icon}</Text>
+              <Text style={styles.statValue}>{item.value}</Text>
+              <Text style={styles.statLabel}>{item.label}</Text>
             </View>
           ))}
         </View>
@@ -158,13 +169,8 @@ export default function StaffDashboard() {
         {recentInspections.map((item) => (
           <View key={item.id} style={styles.recentCard}>
             <View>
-              <Text style={styles.inspectionId}>
-                {item.id}
-              </Text>
-
-              <Text style={styles.recentDetails}>
-                {item.time}
-              </Text>
+              <Text style={styles.inspectionId}>{item.id}</Text>
+              <Text style={styles.recentDetails}>{item.time}</Text>
             </View>
 
             <Text
@@ -214,18 +220,16 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#DCFCE7',
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoutButton: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
 
-  avatarText: {
-    color: '#14532D',
-    fontSize: 16,
+  logoutText: {
+    color: '#B91C1C',
+    fontSize: 13,
     fontWeight: 'bold',
   },
 
