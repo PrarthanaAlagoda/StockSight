@@ -1,4 +1,3 @@
-
 import { StatusBar } from 'expo-status-bar';
 import AuthNavigator from './src/features/auth/AuthNavigator';
 
