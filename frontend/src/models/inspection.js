@@ -1,5 +1,6 @@
 import { serverTimestamp } from 'firebase/firestore';
 
+
 // Inventory model
 export const createInventoryModel = ({
   inventoryId,
