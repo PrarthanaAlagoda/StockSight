@@ -14,5 +14,6 @@ export const COLLECTIONS = {
     ANALYSIS: 'ANALYSIS',
     NOTIFICATION: 'NOTIFICATION',
     REPORT: 'REPORT',
+    COUNTER: 'COUNTER',
   };
   

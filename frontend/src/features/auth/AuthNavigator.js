@@ -21,6 +21,7 @@ const ManagerStack = createNativeStackNavigator();
 export default function AuthNavigator() {
   const [currentScreen, setCurrentScreen] = useState('login');
   const [userRole, setUserRole] = useState(null);
+  const [employee, setEmployee] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // Registration
@@ -54,6 +55,7 @@ export default function AuthNavigator() {
 
       const result = await loginUser(email, password);
 
+      setEmployee(result.employee);
       setUserRole(result.role);
     } catch (error) {
       Alert.alert('Login Failed', error.message);
@@ -66,6 +68,7 @@ export default function AuthNavigator() {
   const handleLogout = async () => {
     try {
       await logoutUser();
+      setEmployee(null);
       setUserRole(null);
       setCurrentScreen('login');
     } catch (error) {
@@ -93,7 +96,12 @@ export default function AuthNavigator() {
 
   // STAFF Dashboard
   if (userRole === 'STAFF') {
-    return <StaffDashboard onLogout={handleLogout} />;
+    return (
+      <StaffDashboard
+        onLogout={handleLogout}
+        employee={employee}
+      />
+    );
   }
 
   // MANAGER Dashboard

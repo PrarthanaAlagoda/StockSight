@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,75 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+
+import {
+  ClipboardList,
+  CalendarCheck,
+  PackageX,
+  PackageMinus,
+} from 'lucide-react-native';
 
 import NewInspection from './NewInspection';
 import PhotoEvidence from './PhotoEvidence';
 import InspectionHistory from './InspectionHistory';
 
-export default function StaffDashboard({ onLogout }) {
+import { getStaffDashboardData } from './staffService';
+
+export default function StaffDashboard({ onLogout, employee }) {
   const [currentScreen, setCurrentScreen] = useState('dashboard');
 
   const [inspectionData, setInspectionData] = useState(null);
   const [photoEvidenceData, setPhotoEvidenceData] = useState(null);
+
+  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+
+  // Fetch dashboard data from Firestore
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchDashboardData = async () => {
+      if (!employee?.employee_id) {
+        setDashboardLoading(false);
+        return;
+      }
+
+      try {
+        setDashboardLoading(true);
+
+        const data = await getStaffDashboardData(
+          employee.employee_id
+        );
+
+        if (isActive) {
+          setDashboardData(data);
+        }
+      } catch (error) {
+        console.error('Dashboard loading failed:', error);
+
+        if (isActive) {
+          Alert.alert(
+            'Dashboard Error',
+            'Unable to load your inspection data from Firestore.'
+          );
+        }
+      } finally {
+        if (isActive) {
+          setDashboardLoading(false);
+        }
+      }
+    };
+
+    if (currentScreen === 'dashboard') {
+      fetchDashboardData();
+    }
+
+    return () => {
+      isActive = false;
+    };
+  }, [employee?.employee_id, currentScreen]);
 
   // Screen 2: New Inspection
   if (currentScreen === 'newInspection') {
@@ -41,6 +99,8 @@ export default function StaffDashboard({ onLogout }) {
           setPhotoEvidenceData(data);
           setCurrentScreen('history');
         }}
+        inspectionData={inspectionData}
+        employee={employee}
       />
     );
   }
@@ -50,36 +110,70 @@ export default function StaffDashboard({ onLogout }) {
     return (
       <InspectionHistory
         onBack={() => setCurrentScreen('dashboard')}
+        employeeId={employee?.employee_id}
       />
     );
   }
 
-  // Screen 1: Staff Dashboard
+  // Dashboard statistics from Firestore
   const statistics = [
-    { label: 'Total Inspected', value: '150', icon: '▦' },
-    { label: 'Inspected Today', value: '12', icon: '✓' },
-    { label: 'Damaged Items', value: '8', icon: '!' },
-    { label: 'Missing Items', value: '5', icon: '?' },
+    {
+      label: 'Total Inspected',
+      value: dashboardLoading
+        ? '...'
+        : String(dashboardData?.totalInspected ?? 0),
+      Icon: ClipboardList,
+      iconColor: '#15803D',
+      iconBackground: '#F0FDF4',
+    },
+    {
+      label: 'Inspected Today',
+      value: dashboardLoading
+        ? '...'
+        : String(dashboardData?.inspectedToday ?? 0),
+      Icon: CalendarCheck,
+      iconColor: '#15803D',
+      iconBackground: '#F0FDF4',
+    },
+    {
+      label: 'Damaged Items',
+      value: dashboardLoading
+        ? '...'
+        : String(dashboardData?.damagedItems ?? 0),
+      Icon: PackageX,
+      iconColor: '#DC2626',
+      iconBackground: '#FEF2F2',
+    },
+    {
+      label: 'Missing Items',
+      value: dashboardLoading
+        ? '...'
+        : String(dashboardData?.missingItems ?? 0),
+      Icon: PackageMinus,
+      iconColor: '#EA580C',
+      iconBackground: '#FFF7ED',
+    },
   ];
 
-  const recentInspections = [
-    {
-      id: 'INS-0032',
-      time: 'Today, 2:30 PM',
-      status: 'Completed',
-    },
-    {
-      id: 'INS-0031',
-      time: 'Today, 11:15 AM',
-      status: 'Completed',
-    },
-    {
-      id: 'INS-0030',
-      time: 'Yesterday, 4:20 PM',
-      status: 'Pending',
-    },
-  ];
+  // Recent inspections from Firestore
+  const recentInspections =
+    dashboardData?.recentInspections?.map((inspection) => {
+      const submittedAt = inspection.submitted_at?.toDate?.();
 
+      return {
+        id:
+          inspection.inspection_number ||
+          `INS-${(inspection.inspection_id || inspection.id)
+            .slice(0, 6)
+            .toUpperCase()}`,
+        time: submittedAt
+          ? submittedAt.toLocaleString()
+          : 'Date unavailable',
+        status: inspection.status || 'Pending',
+      };
+    }) || [];
+
+  // Logout confirmation
   const confirmLogout = () => {
     Alert.alert(
       'Logout',
@@ -98,6 +192,7 @@ export default function StaffDashboard({ onLogout }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
+
         {/* Header */}
         <View style={styles.header}>
           <View>
@@ -117,7 +212,7 @@ export default function StaffDashboard({ onLogout }) {
 
         {/* Welcome */}
         <Text style={styles.greeting}>
-          Hello, Prarthana!
+          Hello, {employee?.name || 'Staff'}!
         </Text>
 
         <Text style={styles.description}>
@@ -141,13 +236,34 @@ export default function StaffDashboard({ onLogout }) {
         </Text>
 
         <View style={styles.grid}>
-          {statistics.map((item) => (
-            <View key={item.label} style={styles.statCard}>
-              <Text style={styles.statIcon}>{item.icon}</Text>
-              <Text style={styles.statValue}>{item.value}</Text>
-              <Text style={styles.statLabel}>{item.label}</Text>
-            </View>
-          ))}
+          {statistics.map((item) => {
+            const IconComponent = item.Icon;
+
+            return (
+              <View key={item.label} style={styles.statCard}>
+                <View
+                  style={[
+                    styles.statIconContainer,
+                    { backgroundColor: item.iconBackground },
+                  ]}
+                >
+                  <IconComponent
+                    size={25}
+                    color={item.iconColor}
+                    strokeWidth={2.2}
+                  />
+                </View>
+
+                <Text style={styles.statValue}>
+                  {item.value}
+                </Text>
+
+                <Text style={styles.statLabel}>
+                  {item.label}
+                </Text>
+              </View>
+            );
+          })}
         </View>
 
         {/* Start Inspection */}
@@ -161,29 +277,61 @@ export default function StaffDashboard({ onLogout }) {
           </Text>
         </TouchableOpacity>
 
+        {/* Inspection History */}
+        <TouchableOpacity
+          style={styles.historyButton}
+          onPress={() => setCurrentScreen('history')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.historyButtonText}>
+            View Inspection History →
+          </Text>
+        </TouchableOpacity>
+
         {/* Recent Inspections */}
         <Text style={styles.sectionTitle}>
           Recent Inspections
         </Text>
 
-        {recentInspections.map((item) => (
-          <View key={item.id} style={styles.recentCard}>
-            <View>
-              <Text style={styles.inspectionId}>{item.id}</Text>
-              <Text style={styles.recentDetails}>{item.time}</Text>
-            </View>
-
-            <Text
-              style={
-                item.status === 'Completed'
-                  ? styles.completed
-                  : styles.pending
-              }
-            >
-              {item.status}
+        {dashboardLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#166534" />
+            <Text style={styles.emptyText}>
+              Loading inspections...
             </Text>
           </View>
-        ))}
+        ) : recentInspections.length === 0 ? (
+          <Text style={styles.emptyText}>
+            No inspections found.
+          </Text>
+        ) : (
+          recentInspections.map((item) => (
+            <View key={item.id} style={styles.recentCard}>
+              <View>
+                <Text style={styles.inspectionId}>
+                  {item.id}
+                </Text>
+
+                <Text style={styles.recentDetails}>
+                  {item.time}
+                </Text>
+              </View>
+
+              <Text
+                style={
+                  ['COMPLETED', 'APPROVED'].includes(
+                    item.status?.toUpperCase()
+                  )
+                    ? styles.completed
+                    : styles.pending
+                }
+              >
+                {item.status}
+              </Text>
+            </View>
+          ))
+        )}
+
       </ScrollView>
     </View>
   );
@@ -289,9 +437,12 @@ const styles = StyleSheet.create({
     borderColor: '#E1EDE3',
   },
 
-  statIcon: {
-    fontSize: 22,
-    color: '#15803D',
+  statIconContainer: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   statValue: {
@@ -359,5 +510,33 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
     fontSize: 11,
+  },
+
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+
+  emptyText: {
+    color: '#64748B',
+    fontSize: 13,
+    textAlign: 'center',
+    padding: 15,
+  },
+
+  historyButton: {
+    backgroundColor: '#FFFFFF',
+    padding: 17,
+    borderRadius: 13,
+    alignItems: 'center',
+    marginBottom: 28,
+    borderWidth: 1.5,
+    borderColor: '#166534',
+  },
+
+  historyButtonText: {
+    color: '#166534',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

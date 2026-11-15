@@ -7,7 +7,11 @@ import {
 } from '../../services/firestore';
 
 import { COLLECTIONS } from '../../utils/constants';
-import { createInspectionModel } from '../../models/inspection';
+
+import {
+  createInspectionModel,
+  createImageModel,
+} from '../../models/inspection';
 
 import {
   collection,
@@ -92,13 +96,50 @@ export async function getInventoryBySectionId(sectionId) {
   }
 }
 
+// Get shelf section details by document ID
+export async function getShelfSectionById(sectionId) {
+  try {
+    const sections = await getDocuments(COLLECTIONS.SHELF_SECTION);
+
+    return sections.find(
+      (section) => section.section_id === sectionId
+    ) || null;
+  } catch (error) {
+    console.error('Error retrieving shelf section:', error);
+    throw error;
+  }
+}
+
 // ==========================================
 // INSPECTION FUNCTIONS
 // ==========================================
 
 // Create a new staff inspection
+// Generates references: INS-0001, INS-0002...
 export async function createInspection(inspectionData) {
   try {
+    // Get existing inspection records
+    const inspections = await getDocuments(
+      COLLECTIONS.INSPECTION
+    );
+
+    // Find the highest existing inspection number
+    const existingNumbers = inspections.map((inspection) => {
+      const match = inspection.inspection_number?.match(
+        /^INS-(\d+)$/
+      );
+
+      return match ? Number(match[1]) : 0;
+    });
+
+    const highestNumber = Math.max(0, ...existingNumbers);
+    const nextNumber = highestNumber + 1;
+
+    // Generate the next inspection reference
+    const inspectionNumber =
+      `INS-${String(nextNumber).padStart(4, '0')}`;
+
+    // Create a new inspection document
     const inspectionRef = doc(
       collection(db, COLLECTIONS.INSPECTION)
     );
@@ -107,6 +148,8 @@ export async function createInspection(inspectionData) {
       ...inspectionData,
       inspectionId: inspectionRef.id,
     });
+
+    inspectionRecord.inspection_number = inspectionNumber;
 
     await setDoc(inspectionRef, inspectionRecord);
 
@@ -144,12 +187,45 @@ export async function saveObservation({
     await updateDocument(
       COLLECTIONS.OBSERVATION,
       observationRef.id,
-      { observation_id: observationRef.id }
+      {
+        observation_id: observationRef.id,
+      }
     );
 
     return observationRef.id;
   } catch (error) {
     console.error('Error saving observation:', error);
+    throw error;
+  }
+}
+
+// ==========================================
+// IMAGE FUNCTIONS
+// ==========================================
+
+// Save uploaded image details to Firestore
+export async function saveInspectionImage({
+  inspectionId,
+  imageUrl,
+  publicId,
+}) {
+  try {
+    const imageRef = doc(
+      collection(db, COLLECTIONS.IMAGE)
+    );
+
+    const imageRecord = createImageModel({
+      imageId: imageRef.id,
+      inspectionId,
+      imageUrl,
+      publicId,
+    });
+
+    await setDoc(imageRef, imageRecord);
+
+    return imageRef.id;
+  } catch (error) {
+    console.error('Error saving inspection image:', error);
     throw error;
   }
 }
@@ -207,6 +283,9 @@ export async function submitInspection(inspectionId) {
   }
 }
 
+// ==========================================
+// TEST PRODUCT RETRIEVAL
+// ==========================================
 
 export async function testProductRetrieval() {
   try {
@@ -217,6 +296,90 @@ export async function testProductRetrieval() {
     return products;
   } catch (error) {
     console.error('Product retrieval failed:', error);
+    throw error;
+  }
+}
+
+// ==========================================
+// STAFF DASHBOARD DATA
+// ==========================================
+
+export async function getStaffDashboardData(employeeId) {
+  try {
+    // Get inspections belonging to this employee
+    const inspections = await getInspectionHistory(employeeId);
+
+    // Get analysis records
+    const analyses = await getDocuments(COLLECTIONS.ANALYSIS);
+
+    // Get today's date using local time
+    const now = new Date();
+
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
+
+    const startOfTomorrow = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1
+    );
+
+    // Count inspections submitted today
+    const inspectedToday = inspections.filter((inspection) => {
+      const submittedAt = inspection.submitted_at?.toDate?.();
+
+      return (
+        submittedAt &&
+        submittedAt >= startOfToday &&
+        submittedAt < startOfTomorrow
+      );
+    }).length;
+
+    // Get IDs of this employee's inspections
+    const inspectionIds = new Set(
+      inspections.map((inspection) => inspection.inspection_id)
+    );
+
+    // Keep only analysis records belonging to this employee
+    const employeeAnalyses = analyses.filter((analysis) =>
+      inspectionIds.has(analysis.inspection_id)
+    );
+
+    // Calculate damaged and missing quantities
+    const damagedItems = employeeAnalyses.reduce(
+      (total, analysis) =>
+        total + Number(analysis.damaged_quantity || 0),
+      0
+    );
+
+    const missingItems = employeeAnalyses.reduce(
+      (total, analysis) =>
+        total + Number(analysis.missing_quantity || 0),
+      0
+    );
+
+    // Get the three most recent inspections
+    const recentInspections = [...inspections]
+      .sort((a, b) => {
+        const dateA = a.submitted_at?.toMillis?.() || 0;
+        const dateB = b.submitted_at?.toMillis?.() || 0;
+
+        return dateB - dateA;
+      })
+      .slice(0, 3);
+
+    return {
+      totalInspected: inspections.length,
+      inspectedToday,
+      damagedItems,
+      missingItems,
+      recentInspections,
+    };
+  } catch (error) {
+    console.error('Error retrieving staff dashboard data:', error);
     throw error;
   }
 }

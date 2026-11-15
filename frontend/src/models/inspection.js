@@ -1,5 +1,5 @@
-import { serverTimestamp } from 'firebase/firestore';
 
+import { serverTimestamp } from 'firebase/firestore';
 
 // Inventory model
 export const createInventoryModel = ({
@@ -18,16 +18,24 @@ export const createInventoryModel = ({
 export const createInspectionModel = ({
   inspectionId,
   employeeId,
+  inventoryId,
   sectionId,
-  status = 'PENDING',
-  observation = '',
+  expectedQuantity,
+  status = 'DRAFT',
+  reviewedBy = null,
+  rejectionReason = '',
 }) => ({
   inspection_id: inspectionId,
   employee_id: employeeId,
+  inventory_id: inventoryId,
   section_id: sectionId,
+  expected_quantity: expectedQuantity,
   status,
-  observation,
-  submitted_at: serverTimestamp(),
+  reviewed_by: reviewedBy,
+  rejection_reason: rejectionReason,
+  created_at: serverTimestamp(),
+  submitted_at: null,
+  completed_at: null,
 });
 
 // Image model

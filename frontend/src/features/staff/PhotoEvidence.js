@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -9,16 +10,32 @@ import {
   StyleSheet,
   Alert,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 
 import * as ImagePicker from 'expo-image-picker';
 
-export default function PhotoEvidence({ onBack, onContinue }) {
+import { uploadInspectionImage } from '../../services/cloudinary';
+
+import {
+  createInspection,
+  saveObservation,
+  saveInspectionImage,
+  submitInspection,
+} from './staffService';
+
+export default function PhotoEvidence({
+  onBack,
+  onContinue,
+  inspectionData,
+  employee,
+}) {
   const [observations, setObservations] = useState('');
   const [damaged, setDamaged] = useState(false);
   const [missing, setMissing] = useState(false);
   const [quantityMismatch, setQuantityMismatch] = useState(false);
   const [photos, setPhotos] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
 
   // Open phone camera
   const openCamera = async () => {
@@ -38,13 +55,14 @@ export default function PhotoEvidence({ onBack, onContinue }) {
         mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.8,
+        base64: true,
       });
 
       if (!result.canceled) {
         setPhotos((current) => [
           ...current,
           ...result.assets,
-        ]);
+        ].slice(0, 5));
       }
     } catch (error) {
       Alert.alert('Camera Error', error.message);
@@ -70,13 +88,14 @@ export default function PhotoEvidence({ onBack, onContinue }) {
         allowsMultipleSelection: true,
         selectionLimit: 5,
         quality: 0.8,
+        base64: true,
       });
 
       if (!result.canceled) {
-        setPhotos((current) => {
-          const combined = [...current, ...result.assets];
-          return combined.slice(0, 5);
-        });
+        setPhotos((current) => [
+          ...current,
+          ...result.assets,
+        ].slice(0, 5));
       }
     } catch (error) {
       Alert.alert('Gallery Error', error.message);
@@ -120,22 +139,115 @@ export default function PhotoEvidence({ onBack, onContinue }) {
     );
   };
 
-  // Continue to inspection history
-  const handleContinue = () => {
-    if (typeof onContinue === 'function') {
-      onContinue({
-        observations,
-        issues: {
-          damaged,
-          missing,
-          quantityMismatch,
-        },
-        photos: photos.map((photo) => ({
-          uri: photo.uri,
-          fileName: photo.fileName || null,
-          mimeType: photo.mimeType || null,
-        })),
+  // Submit inspection and save evidence
+  const handleSubmit = async () => {
+    if (submitting) return;
+
+    if (!inspectionData) {
+      Alert.alert(
+        'Missing Inspection Details',
+        'Please go back and complete the new inspection.'
+      );
+      return;
+    }
+
+    if (!employee?.employee_id) {
+      Alert.alert(
+        'Employee Not Found',
+        'Unable to identify the logged-in staff member.'
+      );
+      return;
+    }
+
+    if (
+      !inspectionData.inventoryId ||
+      !inspectionData.sectionId
+    ) {
+      Alert.alert(
+        'Inventory Details Missing',
+        'Please select a product with a valid inventory and shelf section.'
+      );
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      // 1. Create inspection record
+      const inspectionId = await createInspection({
+        employeeId: employee.employee_id,
+        inventoryId: inspectionData.inventoryId,
+        sectionId: inspectionData.sectionId,
+        expectedQuantity: inspectionData.expectedQty,
+        status: 'DRAFT',
       });
+
+      // 2. Save observation if provided
+      const issueNames = [];
+
+      if (damaged) issueNames.push('Damaged items');
+      if (missing) issueNames.push('Missing items');
+      if (quantityMismatch) issueNames.push('Quantity mismatch');
+
+      const observationParts = [];
+
+      if (observations.trim()) {
+        observationParts.push(observations.trim());
+      }
+
+      if (issueNames.length > 0) {
+        observationParts.push(
+          `Identified issues: ${issueNames.join(', ')}`
+        );
+      }
+
+      if (observationParts.length > 0) {
+        await saveObservation({
+          inspectionId,
+          employeeId: employee.employee_id,
+          description: observationParts.join('\n'),
+          type: 'TEXT',
+        });
+      }
+
+      // 3. Upload photos and save their details
+      for (const photo of photos) {
+        const uploaded = await uploadInspectionImage(photo.base64);
+
+        await saveInspectionImage({
+          inspectionId,
+          imageUrl: uploaded.imageUrl,
+          publicId: uploaded.publicId,
+        });
+      }
+
+      // 4. Submit for manager review
+      await submitInspection(inspectionId);
+
+      Alert.alert(
+        'Inspection Submitted',
+        'Your inspection and evidence have been successfully saved.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (typeof onContinue === 'function') {
+                onContinue({ inspectionId });
+              }
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Inspection submission failed:', error);
+
+      Alert.alert(
+        'Submission Failed',
+        error.message ||
+          'Unable to submit inspection. Please try again.'
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -145,8 +257,13 @@ export default function PhotoEvidence({ onBack, onContinue }) {
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-        {checked && <Text style={styles.checkmark}>✓</Text>}
+      <View style={[
+        styles.checkbox,
+        checked && styles.checkboxChecked,
+      ]}>
+        {checked && (
+          <Text style={styles.checkmark}>✓</Text>
+        )}
       </View>
 
       <Text style={styles.issueLabel}>{label}</Text>
@@ -178,6 +295,7 @@ export default function PhotoEvidence({ onBack, onContinue }) {
           style={styles.backButton}
           onPress={onBack}
           activeOpacity={0.7}
+          disabled={submitting}
         >
           <Text style={styles.backText}>
             ‹ Back to New Inspection
@@ -203,7 +321,7 @@ export default function PhotoEvidence({ onBack, onContinue }) {
 
           {photos.length === 0 ? (
             <View style={styles.photoArea}>
-              <Text style={styles.cameraIcon}>▧</Text>
+             <Ionicons name="images-outline" size={42} color="#15803D" />
               <Text style={styles.emptyTitle}>
                 No photos added yet
               </Text>
@@ -223,6 +341,7 @@ export default function PhotoEvidence({ onBack, onContinue }) {
                   <TouchableOpacity
                     style={styles.removePhotoButton}
                     onPress={() => removePhoto(photo.uri)}
+                    disabled={submitting}
                   >
                     <Text style={styles.removePhotoText}>×</Text>
                   </TouchableOpacity>
@@ -239,6 +358,7 @@ export default function PhotoEvidence({ onBack, onContinue }) {
             style={styles.addPhotoButton}
             onPress={handleAddPhoto}
             activeOpacity={0.8}
+            disabled={submitting}
           >
             <Text style={styles.addPhotoText}>
               ＋ Add Photo
@@ -265,6 +385,7 @@ export default function PhotoEvidence({ onBack, onContinue }) {
             multiline
             maxLength={1000}
             textAlignVertical="top"
+            editable={!submitting}
           />
 
           <Text style={styles.characterCount}>
@@ -303,19 +424,32 @@ export default function PhotoEvidence({ onBack, onContinue }) {
           />
         </View>
 
-        {/* Continue */}
+        {/* Submit */}
         <TouchableOpacity
-          style={styles.continueButton}
-          onPress={handleContinue}
+          style={[
+            styles.continueButton,
+            submitting && styles.disabledButton,
+          ]}
+          onPress={handleSubmit}
           activeOpacity={0.8}
+          disabled={submitting}
         >
-          <Text style={styles.continueText}>
-            Continue to Inspection History →
-          </Text>
+          {submitting ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color="#FFFFFF" />
+              <Text style={styles.continueText}>
+                Submitting Inspection...
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.continueText}>
+              Submit Inspection →
+            </Text>
+          )}
         </TouchableOpacity>
 
         <Text style={styles.footerText}>
-          Check your observations before continuing.
+          Check your evidence before submitting.
         </Text>
       </ScrollView>
     </View>
@@ -567,6 +701,16 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     marginTop: 4,
+  },
+
+  disabledButton: {
+    opacity: 0.65,
+  },
+
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
 
   continueText: {
