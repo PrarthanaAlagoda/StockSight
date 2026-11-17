@@ -1,107 +1,168 @@
-import { View, Text, ScrollView, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { useState, useEffect } from 'react';
+import {
+    View, Text, ScrollView, Image, TouchableOpacity,
+    Modal, ActivityIndicator, StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import StatusBadge from '../components/StatusBadge';
 import DetailRow from '../components/DetailRow';
 import { colors } from '../theme';
-import { inspectionDetails } from '../data/mockData';
+import { getInspectionDetails } from '../services/managerService';
 
 export default function InspectionReviewScreen({ navigation, route }) {
-    const inspectionId = route?.params?.inspectionId ?? 'INS-0032';
-    const data = inspectionDetails[inspectionId];
+    const inspectionId = route?.params?.inspectionId;
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [viewerUri, setViewerUri] = useState(null);
 
-    if (!data) {
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            if (!inspectionId) {
+                setError('No inspection selected.');
+                setLoading(false);
+                return;
+            }
+            try {
+                const result = await getInspectionDetails(inspectionId);
+                if (!alive) return;
+                if (!result) setError('Inspection not found.');
+                setData(result);
+            } catch (e) {
+                console.log('getInspectionDetails error:', e);
+                if (alive) setError(e?.message ?? 'Could not load inspection.');
+            } finally {
+                if (alive) setLoading(false);
+            }
+        })();
+        return () => {
+            alive = false;
+        };
+    }, [inspectionId]);
+
+    const Header = (
+        <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation?.goBack?.()}>
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Inspection Review & Evidence</Text>
+            <View style={{ width: 24 }} />
+        </View>
+    );
+
+    if (loading) {
         return (
             <SafeAreaView style={styles.safe}>
-                <Text style={styles.notFound}>Inspection not found.</Text>
+                {Header}
+                <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+            </SafeAreaView>
+        );
+    }
+
+    if (error || !data) {
+        return (
+            <SafeAreaView style={styles.safe}>
+                {Header}
+                <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{error || 'Inspection not found.'}</Text>
+                </View>
             </SafeAreaView>
         );
     }
 
     return (
         <SafeAreaView style={styles.safe}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation?.goBack?.()}>
-                    <Ionicons name="arrow-back" size={24} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Inspection Review & Evidence</Text>
-                <View style={{ width: 24 }} />
-            </View>
+            {Header}
 
             <ScrollView contentContainerStyle={styles.container}>
-                {/* Summary card */}
                 <View style={styles.summary}>
                     <View style={styles.summaryIcon}>
                         <Ionicons name="clipboard-outline" size={26} color={colors.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.summaryId}>{data.inspectionId}</Text>
-                        <Text style={styles.summarySub}>Submitted: {data.submittedAt}</Text>
+                        <Text style={styles.summaryId}>{data.displayId}</Text>
+                        <Text style={styles.summarySub}>Submitted: {data.submittedLabel}</Text>
                     </View>
-                    <StatusBadge status={data.status} />
+                    <StatusBadge status={data.hasIssues ? 'issues' : 'pending'} />
                 </View>
 
-                {/* Inspection details */}
                 <Text style={styles.sectionTitle}>Inspection Details</Text>
                 <View style={styles.card}>
                     <DetailRow icon="person-outline" label="Staff Inspector" value={data.staffName} />
                     <DetailRow icon="cube-outline" label="Product" value={data.productName} />
                     <DetailRow icon="layers-outline" label="Expected Quantity" value={data.expectedQuantity} />
-                    <DetailRow icon="document-text-outline" label="Staff-Reported Actual" value={data.staffReportedQuantity} />
-                    <DetailRow icon="location-outline" label="Warehouse Location" value={data.warehouseLocation} isLast />
+                    <DetailRow icon="images-outline" label="Photos Submitted" value={data.photos.length} />
+                    <DetailRow icon="location-outline" label="Location" value={data.location} isLast />
                 </View>
 
-                {/* Photo evidence */}
                 <View style={styles.photoHeader}>
                     <Text style={styles.sectionTitle}>Photo Evidence ({data.photos.length})</Text>
-                    <TouchableOpacity style={styles.reviewBtn}>
-                        <Ionicons name="eye-outline" size={16} color={colors.primary} />
-                        <Text style={styles.reviewBtnText}>Review Photos</Text>
-                    </TouchableOpacity>
+                    {data.photos.length > 0 && (
+                        <TouchableOpacity
+                            style={styles.reviewBtn}
+                            onPress={() => setViewerUri(data.photos[0].url)}
+                        >
+                            <Ionicons name="eye-outline" size={16} color={colors.primary} />
+                            <Text style={styles.reviewBtnText}>Review Photos</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
-                <View style={styles.photoRow}>
-                    {data.photos.map((photo) => (
-                        <View key={photo.id} style={styles.photoBox}>
-                            {photo.url ? (
+                {data.photos.length === 0 ? (
+                    <Text style={styles.empty}>No photos were uploaded for this inspection.</Text>
+                ) : (
+                    <View style={styles.photoRow}>
+                        {data.photos.map((photo) => (
+                            <TouchableOpacity
+                                key={photo.id}
+                                style={styles.photoBox}
+                                activeOpacity={0.85}
+                                onPress={() => setViewerUri(photo.url)}
+                            >
                                 <Image source={{ uri: photo.url }} style={styles.photo} />
-                            ) : (
-                                <Ionicons name="image-outline" size={40} color={colors.muted} />
-                            )}
-                            <View style={styles.expandBtn}>
-                                <Ionicons name="expand-outline" size={16} color={colors.text} />
-                            </View>
-                        </View>
-                    ))}
-                </View>
+                                <View style={styles.expandBtn}>
+                                    <Ionicons name="expand-outline" size={16} color={colors.text} />
+                                </View>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
 
-                {/* Staff observation */}
                 <Text style={styles.sectionTitle}>Staff Observation</Text>
                 <View style={styles.quoteBox}>
                     <Ionicons name="chatbox-ellipses" size={20} color={colors.primary} />
-                    <Text style={styles.quoteText}>{data.observation}</Text>
+                    <Text style={styles.quoteText}>
+                        {data.observation || 'No observation was added by staff.'}
+                    </Text>
                 </View>
 
-                {/* Continue button */}
                 <TouchableOpacity
                     style={styles.continueBtn}
                     activeOpacity={0.85}
-                    onPress={() =>
-                        navigation?.navigate?.('VerifyFinalise', { inspectionId: data.inspectionId })
-                    }
+                    onPress={() => navigation?.navigate?.('VerifyFinalise', { inspectionId: data.inspectionId })}
                 >
                     <Text style={styles.continueText}>Continue to Verification</Text>
                     <Ionicons name="arrow-forward" size={20} color="#fff" />
                 </TouchableOpacity>
             </ScrollView>
+
+            {/* Full-screen photo viewer */}
+            <Modal visible={!!viewerUri} transparent animationType="fade" onRequestClose={() => setViewerUri(null)}>
+                <View style={styles.viewer}>
+                    <TouchableOpacity style={styles.viewerClose} onPress={() => setViewerUri(null)}>
+                        <Ionicons name="close" size={28} color="#fff" />
+                    </TouchableOpacity>
+                    {viewerUri && <Image source={{ uri: viewerUri }} style={styles.viewerImg} resizeMode="contain" />}
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background },
-    notFound: { textAlign: 'center', marginTop: 60, color: colors.muted },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -110,6 +171,8 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
     },
     headerTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+    errorBox: { margin: 18, padding: 16, backgroundColor: colors.rejectBg, borderRadius: 14 },
+    errorText: { color: colors.rejectText, fontSize: 14 },
     container: { paddingHorizontal: 18, paddingBottom: 40 },
     summary: {
         backgroundColor: colors.primaryLight,
@@ -131,12 +194,7 @@ const styles = StyleSheet.create({
     summaryId: { fontSize: 18, fontWeight: '700', color: colors.text },
     summarySub: { fontSize: 13, color: '#374151', marginTop: 2 },
     sectionTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 10 },
-    card: {
-        backgroundColor: colors.card,
-        borderRadius: 16,
-        paddingHorizontal: 14,
-        marginBottom: 20,
-    },
+    card: { backgroundColor: colors.card, borderRadius: 16, paddingHorizontal: 14, marginBottom: 20 },
     photoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     reviewBtn: {
         flexDirection: 'row',
@@ -148,15 +206,17 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     reviewBtnText: { marginLeft: 6, fontSize: 13, fontWeight: '600', color: colors.primary },
-    photoRow: { flexDirection: 'row', marginBottom: 20 },
+    empty: { color: colors.muted, marginBottom: 20 },
+    photoRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 },
     photoBox: {
-        flex: 1,
+        width: '48%',
         height: 150,
         borderRadius: 14,
         backgroundColor: '#DCE8DF',
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 10,
+        marginRight: '2%',
+        marginBottom: 10,
         overflow: 'hidden',
     },
     photo: { width: '100%', height: '100%' },
@@ -190,4 +250,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     continueText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center' },
+    viewerClose: { position: 'absolute', top: 50, right: 20, zIndex: 2, padding: 6 },
+    viewerImg: { width: '100%', height: '80%' },
 });

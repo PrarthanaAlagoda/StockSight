@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
     View, Text, TextInput, ScrollView, TouchableOpacity,
-    Modal, Alert, StyleSheet,
+    Modal, Alert, ActivityIndicator, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import StatusBadge from '../components/StatusBadge';
 import { colors } from '../theme';
-import { inspectionDetails } from '../data/mockData';
+import {
+    getInspectionDetails,
+    completeInspection,
+    rejectInspection,
+} from '../services/managerService';
 import { calculateDiscrepancy } from '../utils/discrepancy';
 
 const MAX_COMMENT = 500;
@@ -35,8 +39,12 @@ function QuantityField({ label, required, value, onChangeText }) {
 }
 
 export default function VerifyFinaliseScreen({ navigation, route }) {
-    const inspectionId = route?.params?.inspectionId ?? 'INS-0032';
-    const data = inspectionDetails[inspectionId];
+    const inspectionId = route?.params?.inspectionId;
+
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [saving, setSaving] = useState(false);
 
     const [verified, setVerified] = useState('');
     const [damaged, setDamaged] = useState('');
@@ -45,24 +53,68 @@ export default function VerifyFinaliseScreen({ navigation, route }) {
     const [rejectOpen, setRejectOpen] = useState(false);
     const [rejectReason, setRejectReason] = useState('');
 
-    if (!data) {
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            if (!inspectionId) {
+                setError('No inspection selected.');
+                setLoading(false);
+                return;
+            }
+            try {
+                const result = await getInspectionDetails(inspectionId);
+                if (!alive) return;
+                if (!result) setError('Inspection not found.');
+                setData(result);
+            } catch (e) {
+                console.log('getInspectionDetails error:', e);
+                if (alive) setError(e?.message ?? 'Could not load inspection.');
+            } finally {
+                if (alive) setLoading(false);
+            }
+        })();
+        return () => {
+            alive = false;
+        };
+    }, [inspectionId]);
+
+    const Header = (
+        <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation?.goBack?.()}>
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Verify & Finalise</Text>
+            <View style={{ width: 24 }} />
+        </View>
+    );
+
+    if (loading) {
         return (
             <SafeAreaView style={styles.safe}>
-                <Text style={styles.notFound}>Inspection not found.</Text>
+                {Header}
+                <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+            </SafeAreaView>
+        );
+    }
+
+    if (error || !data) {
+        return (
+            <SafeAreaView style={styles.safe}>
+                {Header}
+                <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{error || 'Inspection not found.'}</Text>
+                </View>
             </SafeAreaView>
         );
     }
 
     const hasVerified = verified !== '';
     const verifiedNum = Number(verified) || 0;
-    const { quantityDifference, discrepancyType } = calculateDiscrepancy(
-        data.expectedQuantity,
-        verifiedNum
-    );
+    const { quantityDifference } = calculateDiscrepancy(data.expectedQuantity, verifiedNum);
 
     const goBackToQueue = () => navigation?.navigate?.('PendingQueue');
 
-    const handleComplete = () => {
+    const handleComplete = async () => {
         if (!hasVerified) {
             Alert.alert('Missing quantity', 'Please enter the verified physical quantity.');
             return;
@@ -71,88 +123,76 @@ export default function VerifyFinaliseScreen({ navigation, route }) {
             Alert.alert('Missing comments', 'Please add manager comments.');
             return;
         }
-
-        // TODO: save this to Firestore (ANALYSIS collection) when the backend is ready.
-        const analysis = {
-            inspectionId: data.inspectionId,
-            verifiedQuantity: verifiedNum,
-            damagedQuantity: Number(damaged) || 0,
-            missingQuantity: Number(missing) || 0,
-            quantityDifference,
-            discrepancyType,
-            managerComments: comments.trim(),
-            status: 'COMPLETED',
-        };
-        console.log('Analysis to save:', analysis);
-
-        Alert.alert('Review completed', `${data.inspectionId} has been finalised.`, [
-            { text: 'OK', onPress: goBackToQueue },
-        ]);
+        try {
+            setSaving(true);
+            await completeInspection({
+                inspectionId: data.inspectionId,
+                expectedQuantity: data.expectedQuantity,
+                verifiedQuantity: verifiedNum,
+                damagedQuantity: Number(damaged) || 0,
+                missingQuantity: Number(missing) || 0,
+                comments: comments.trim(),
+            });
+            Alert.alert('Review completed', `${data.displayId} has been finalised.`, [
+                { text: 'OK', onPress: goBackToQueue },
+            ]);
+        } catch (e) {
+            console.log('completeInspection error:', e);
+            Alert.alert('Could not save', e?.message ?? 'Something went wrong. Please try again.');
+        } finally {
+            setSaving(false);
+        }
     };
 
-    const handleReject = () => {
+    const handleReject = async () => {
         if (rejectReason.trim() === '') {
             Alert.alert('Reason required', 'Please enter a reason for rejecting.');
             return;
         }
-
-        // TODO: save status 'REJECTED' and rejectionReason to Firestore.
-        console.log('Rejected:', {
-            inspectionId: data.inspectionId,
-            status: 'REJECTED',
-            rejectionReason: rejectReason.trim(),
-        });
-
-        setRejectOpen(false);
-        setRejectReason('');
-        Alert.alert('Inspection rejected', `${data.inspectionId} has been rejected.`, [
-            { text: 'OK', onPress: goBackToQueue },
-        ]);
+        try {
+            setSaving(true);
+            await rejectInspection({
+                inspectionId: data.inspectionId,
+                reason: rejectReason.trim(),
+            });
+            setRejectOpen(false);
+            setRejectReason('');
+            Alert.alert('Inspection rejected', `${data.displayId} has been rejected.`, [
+                { text: 'OK', onPress: goBackToQueue },
+            ]);
+        } catch (e) {
+            console.log('rejectInspection error:', e);
+            Alert.alert('Could not save', e?.message ?? 'Something went wrong. Please try again.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
         <SafeAreaView style={styles.safe}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation?.goBack?.()}>
-                    <Ionicons name="arrow-back" size={24} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Verify & Finalise</Text>
-                <View style={{ width: 24 }} />
-            </View>
+            {Header}
 
-            <ScrollView
-                contentContainerStyle={styles.container}
-                keyboardShouldPersistTaps="handled"
-            >
-                {/* Summary */}
+            <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
                 <View style={styles.summary}>
                     <View style={styles.summaryIcon}>
                         <Ionicons name="clipboard-outline" size={26} color={colors.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.summaryId}>{data.inspectionId}</Text>
+                        <Text style={styles.summaryId}>{data.displayId}</Text>
                         <Text style={styles.summarySub}>
                             {data.productName}  |  {data.staffName}
                         </Text>
                     </View>
-                    <StatusBadge status={data.status} />
+                    <StatusBadge status={data.hasIssues ? 'issues' : 'pending'} />
                 </View>
 
-                {/* Verification */}
                 <Text style={styles.sectionTitle}>Verification</Text>
                 <View style={styles.card}>
-                    <QuantityField
-                        label="Verified Physical Quantity"
-                        required
-                        value={verified}
-                        onChangeText={setVerified}
-                    />
+                    <QuantityField label="Verified Physical Quantity" required value={verified} onChangeText={setVerified} />
                     <QuantityField label="Damaged Items" value={damaged} onChangeText={setDamaged} />
                     <QuantityField label="Missing Items" value={missing} onChangeText={setMissing} />
                 </View>
 
-                {/* Discrepancy summary */}
                 <View style={styles.discrepancyCard}>
                     <View style={styles.discHeader}>
                         <Ionicons name="stats-chart-outline" size={20} color={colors.primary} />
@@ -179,7 +219,6 @@ export default function VerifyFinaliseScreen({ navigation, route }) {
                     </View>
                 </View>
 
-                {/* Comments */}
                 <Text style={styles.sectionTitle}>Manager Comments *</Text>
                 <View style={styles.commentBox}>
                     <TextInput
@@ -197,11 +236,11 @@ export default function VerifyFinaliseScreen({ navigation, route }) {
                     </Text>
                 </View>
 
-                {/* Buttons */}
                 <View style={styles.btnRow}>
                     <TouchableOpacity
-                        style={styles.rejectBtn}
+                        style={[styles.rejectBtn, saving && styles.disabled]}
                         activeOpacity={0.85}
+                        disabled={saving}
                         onPress={() => setRejectOpen(true)}
                     >
                         <Ionicons name="close-circle-outline" size={20} color={colors.rejectText} />
@@ -209,27 +248,28 @@ export default function VerifyFinaliseScreen({ navigation, route }) {
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                        style={styles.completeBtn}
+                        style={[styles.completeBtn, saving && styles.disabled]}
                         activeOpacity={0.85}
+                        disabled={saving}
                         onPress={handleComplete}
                     >
-                        <Ionicons name="checkmark" size={22} color="#fff" />
-                        <Text style={styles.completeText}>Complete{'\n'}Review</Text>
+                        {saving ? (
+                            <ActivityIndicator color="#fff" />
+                        ) : (
+                            <>
+                                <Ionicons name="checkmark" size={22} color="#fff" />
+                                <Text style={styles.completeText}>Complete{'\n'}Review</Text>
+                            </>
+                        )}
                     </TouchableOpacity>
                 </View>
             </ScrollView>
 
-            {/* Reject reason popup */}
-            <Modal
-                visible={rejectOpen}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setRejectOpen(false)}
-            >
+            <Modal visible={rejectOpen} transparent animationType="fade" onRequestClose={() => setRejectOpen(false)}>
                 <View style={styles.modalBackdrop}>
                     <View style={styles.modalCard}>
                         <Text style={styles.modalTitle}>Reject Inspection</Text>
-                        <Text style={styles.modalSub}>Please enter a reason for rejecting {data.inspectionId}.</Text>
+                        <Text style={styles.modalSub}>Please enter a reason for rejecting {data.displayId}.</Text>
                         <TextInput
                             style={styles.modalInput}
                             multiline
@@ -249,8 +289,12 @@ export default function VerifyFinaliseScreen({ navigation, route }) {
                             >
                                 <Text style={styles.modalCancelText}>Cancel</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.modalConfirm} onPress={handleReject}>
-                                <Text style={styles.modalConfirmText}>Reject</Text>
+                            <TouchableOpacity
+                                style={[styles.modalConfirm, saving && styles.disabled]}
+                                disabled={saving}
+                                onPress={handleReject}
+                            >
+                                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalConfirmText}>Reject</Text>}
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -262,7 +306,8 @@ export default function VerifyFinaliseScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background },
-    notFound: { textAlign: 'center', marginTop: 60, color: colors.muted },
+    errorBox: { margin: 18, padding: 16, backgroundColor: colors.rejectBg, borderRadius: 14 },
+    errorText: { color: colors.rejectText, fontSize: 14 },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -302,7 +347,7 @@ const styles = StyleSheet.create({
     fieldRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
     fieldLabel: { flex: 1, fontSize: 13, color: colors.text, marginRight: 8 },
     inputBox: {
-        width: 115,
+        width: 105,
         flexDirection: 'row',
         alignItems: 'center',
         borderWidth: 1,
@@ -313,12 +358,7 @@ const styles = StyleSheet.create({
     },
     input: { flex: 1, fontSize: 15, color: colors.text, padding: 0 },
     unit: { fontSize: 13, color: colors.muted },
-    discrepancyCard: {
-        backgroundColor: colors.successBg,
-        borderRadius: 16,
-        padding: 14,
-        marginBottom: 20,
-    },
+    discrepancyCard: { backgroundColor: colors.successBg, borderRadius: 16, padding: 14, marginBottom: 20 },
     discHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
     discTitle: { marginLeft: 8, fontSize: 16, fontWeight: '700', color: colors.text },
     discRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
@@ -327,12 +367,7 @@ const styles = StyleSheet.create({
     discTotal: { borderTopWidth: 1, borderTopColor: '#B7DFC2', marginTop: 4, paddingTop: 10 },
     discTotalLabel: { fontSize: 15, fontWeight: '700', color: colors.text },
     discTotalValue: { fontSize: 18, fontWeight: '800' },
-    commentBox: {
-        backgroundColor: colors.card,
-        borderRadius: 14,
-        padding: 12,
-        marginBottom: 20,
-    },
+    commentBox: { backgroundColor: colors.card, borderRadius: 14, padding: 12, marginBottom: 20 },
     commentInput: { minHeight: 90, fontSize: 14, color: colors.text, padding: 0 },
     counter: { alignSelf: 'flex-end', fontSize: 12, color: colors.muted, marginTop: 6 },
     btnRow: { flexDirection: 'row' },
@@ -359,6 +394,7 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
     },
     completeText: { marginLeft: 8, color: '#fff', fontWeight: '700', fontSize: 15, textAlign: 'center' },
+    disabled: { opacity: 0.6 },
     modalBackdrop: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.45)',

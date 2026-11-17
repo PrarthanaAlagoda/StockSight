@@ -1,40 +1,67 @@
-import { useState, useMemo } from 'react';
-import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import {
+    View, Text, TextInput, FlatList, TouchableOpacity,
+    ActivityIndicator, StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import InspectionCard from '../components/InspectionCard';
 import { colors } from '../theme';
-import { pendingInspections } from '../data/mockData';
+import { getPendingInspections } from '../services/managerService';
 
 export default function PendingQueueScreen({ navigation }) {
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [error, setError] = useState('');
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState('all'); // 'all' | 'pending' | 'issues'
 
-    const pendingCount = pendingInspections.filter((i) => i.status === 'pending').length;
-    const issuesCount = pendingInspections.filter((i) => i.status === 'issues').length;
+    const load = useCallback(async () => {
+        try {
+            setError('');
+            setItems(await getPendingInspections());
+        } catch (e) {
+            console.log('getPendingInspections error:', e);
+            setError(e?.message ?? 'Could not load inspections.');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, []);
+
+    // Reload every time this screen comes into focus (e.g. after completing a review).
+    useEffect(() => {
+        if (navigation?.addListener) return navigation.addListener('focus', load);
+        load();
+    }, [navigation, load]);
+
+    const pendingCount = items.filter((i) => !i.hasIssues).length;
+    const issuesCount = items.filter((i) => i.hasIssues).length;
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        return pendingInspections.filter((i) => {
-            const matchesFilter = filter === 'all' || i.status === filter;
+        return items.filter((i) => {
+            const matchesFilter =
+                filter === 'all' || (filter === 'issues' ? i.hasIssues : !i.hasIssues);
             const matchesSearch =
                 q === '' ||
+                i.displayId.toLowerCase().includes(q) ||
                 i.inspectionId.toLowerCase().includes(q) ||
                 i.productName.toLowerCase().includes(q) ||
                 i.staffName.toLowerCase().includes(q);
             return matchesFilter && matchesSearch;
         });
-    }, [search, filter]);
+    }, [items, search, filter]);
 
     const chips = [
-        { key: 'all', label: 'All' },
+        { key: 'all', label: `All (${items.length})` },
         { key: 'pending', label: `Pending (${pendingCount})` },
         { key: 'issues', label: `Issues (${issuesCount})` },
     ];
 
     return (
         <SafeAreaView style={styles.safe}>
-            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation?.goBack?.()}>
                     <Ionicons name="arrow-back" size={24} color={colors.text} />
@@ -43,7 +70,6 @@ export default function PendingQueueScreen({ navigation }) {
                 <View style={{ width: 24 }} />
             </View>
 
-            {/* Search */}
             <View style={styles.searchRow}>
                 <View style={styles.searchBox}>
                     <Ionicons name="search-outline" size={18} color={colors.muted} />
@@ -60,7 +86,6 @@ export default function PendingQueueScreen({ navigation }) {
                 </TouchableOpacity>
             </View>
 
-            {/* Filter chips */}
             <View style={styles.chipRow}>
                 {chips.map((c) => {
                     const active = filter === c.key;
@@ -76,21 +101,42 @@ export default function PendingQueueScreen({ navigation }) {
                 })}
             </View>
 
-            {/* List */}
-            <FlatList
-                data={filtered}
-                keyExtractor={(item) => item.inspectionId}
-                contentContainerStyle={styles.list}
-                renderItem={({ item }) => (
-                    <InspectionCard
-                        item={item}
-                        onPress={() =>
-                            navigation?.navigate?.('InspectionReview', { inspectionId: item.inspectionId })
-                        }
-                    />
-                )}
-                ListEmptyComponent={<Text style={styles.empty}>No inspections found.</Text>}
-            />
+            {loading ? (
+                <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+            ) : error ? (
+                <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{error}</Text>
+                    <TouchableOpacity
+                        style={styles.retryBtn}
+                        onPress={() => {
+                            setLoading(true);
+                            load();
+                        }}
+                    >
+                        <Text style={styles.retryText}>Retry</Text>
+                    </TouchableOpacity>
+                </View>
+            ) : (
+                <FlatList
+                    data={filtered}
+                    keyExtractor={(item) => item.inspectionId}
+                    contentContainerStyle={styles.list}
+                    refreshing={refreshing}
+                    onRefresh={() => {
+                        setRefreshing(true);
+                        load();
+                    }}
+                    renderItem={({ item }) => (
+                        <InspectionCard
+                            item={item}
+                            onPress={() =>
+                                navigation?.navigate?.('InspectionReview', { inspectionId: item.inspectionId })
+                            }
+                        />
+                    )}
+                    ListEmptyComponent={<Text style={styles.empty}>No inspections found.</Text>}
+                />
+            )}
         </SafeAreaView>
     );
 }
@@ -138,4 +184,15 @@ const styles = StyleSheet.create({
     chipTextActive: { color: '#fff' },
     list: { paddingHorizontal: 18, paddingBottom: 30 },
     empty: { textAlign: 'center', color: colors.muted, marginTop: 40 },
+    errorBox: { margin: 18, padding: 16, backgroundColor: colors.rejectBg, borderRadius: 14 },
+    errorText: { color: colors.rejectText, fontSize: 14 },
+    retryBtn: {
+        alignSelf: 'flex-start',
+        marginTop: 12,
+        backgroundColor: colors.primary,
+        borderRadius: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+    },
+    retryText: { color: '#fff', fontWeight: '700' },
 });

@@ -1,20 +1,26 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import StatusBadge from '../../../components/StatusBadge';
+import StatusBadge from './StatusBadge';
 import { colors } from '../theme';
 
 export default function InspectionCard({ item, onPress }) {
+    const thumb = item.photos?.[0]?.url;
+
     return (
         <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
             <View style={styles.topRow}>
                 <View style={styles.thumb}>
-                    <Ionicons name={`${item.icon}-outline`} size={30} color={colors.primary} />
+                    {thumb ? (
+                        <Image source={{ uri: thumb }} style={styles.thumbImg} />
+                    ) : (
+                        <Ionicons name="cube-outline" size={30} color={colors.primary} />
+                    )}
                 </View>
 
                 <View style={styles.info}>
                     <View style={styles.titleRow}>
-                        <Text style={styles.id}>{item.inspectionId}</Text>
-                        <StatusBadge status={item.status} />
+                        <Text style={styles.id}>{item.displayId}</Text>
+                        <StatusBadge status={item.hasIssues ? 'issues' : 'pending'} />
                     </View>
                     <View style={styles.line}>
                         <Ionicons name="person-outline" size={15} color={colors.muted} />
@@ -35,13 +41,13 @@ export default function InspectionCard({ item, onPress }) {
                 </Text>
                 <Text style={styles.divider}>|</Text>
                 <Text style={styles.qtyText}>
-                    Staff Reported: <Text style={styles.qtyBold}>{item.staffReportedQuantity}</Text>
+                    Photos: <Text style={styles.qtyBold}>{item.photos?.length ?? 0}</Text>
                 </Text>
             </View>
 
             <View style={styles.line}>
                 <Ionicons name="time-outline" size={15} color={colors.muted} />
-                <Text style={styles.lineText}>Submitted: {item.submittedAt}</Text>
+                <Text style={styles.lineText}>Submitted: {item.submittedLabel}</Text>
             </View>
         </TouchableOpacity>
     );
@@ -68,7 +74,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 12,
+        overflow: 'hidden',
     },
+    thumbImg: { width: '100%', height: '100%' },
     info: { flex: 1 },
     titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
     id: { fontSize: 17, fontWeight: '700', color: colors.text },

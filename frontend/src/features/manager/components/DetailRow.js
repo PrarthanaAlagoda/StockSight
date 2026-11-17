@@ -16,5 +16,5 @@ const styles = StyleSheet.create({
     row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
     border: { borderBottomWidth: 1, borderBottomColor: '#E5EEE7' },
     label: { flex: 1, marginLeft: 12, fontSize: 14, color: colors.text },
-    value: { fontSize: 14, fontWeight: '700', color: colors.text },
+    value: { flexShrink: 1, maxWidth: '60%', textAlign: 'right', fontSize: 14, fontWeight: '700', color: colors.text },
 });
