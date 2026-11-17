@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import StatusBadge from './StatusBadge';
+import StatusBadge from '../../../components/StatusBadge';
 import { colors } from '../theme';
 
 export default function InspectionCard({ item, onPress }) {
